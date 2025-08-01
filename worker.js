@@ -1,4 +1,3 @@
-// 文件名: worker.js
 "auto";
 
 // ===============================================================
@@ -33,10 +32,13 @@ var config = {
           opacity: { inputBox: [300, 2500], clearBtn: [500, 2500], confirmBtn: [700, 2500], numKeys: { "0": [300, 2600], "1": [200, 2550], "2": [400, 2550], "3": [600, 2550], "4": [200, 2650], "5": [400, 2650], "6": [600, 2650], "7": [200, 2750], "8": [400, 2750], "9": [600, 2750] } },
           blendMode: { activatePos1: [995, 2400], activatePos2: [903, 2170], blendModeInput: [557, 2174], modes: { "滤色": [497, 1791], "变暗": [157, 1362], "线性减淡": [467, 1909] } },
           saveBtn: [90, 148],
-          saveConfirmBtn: [537, 1138]
+          saveConfirmBtn: [537, 1138],
+          applyBtn: [994, 2062]
      },
-     delays: {
-          click: 1, psLaunch: 1000, psClick: 1500, mtBeforeLaunch: 1000, mtAfterLaunch: 700, beforeInput: 850, saveClick1: 800, saveClick2: 100, saveFinal: 500
+          delays: {
+          click: 1, psLaunch: 1000, 
+          delay_before_mt_launch: 3000, // <--- 新增此行，设定一个默认值
+          psClick: 1500, mtBeforeLaunch: 1000, mtAfterLaunch: 700, beforeInput: 850, saveClick1: 800, saveClick2: 100, saveFinal: 500
      }
 };
 
@@ -66,8 +68,8 @@ var StatusUpdater = {
                 </vertical>
             </frame>
         );
-        var x_pos = device.width - 450;
-        var y_pos = 50;
+        var x_pos = device.width - 780;//越大越往左偏移
+        var y_pos = 1;
         this.floatyWindow.setPosition(x_pos, y_pos);
         this.floaty("任务已启动...");
     },
@@ -83,25 +85,24 @@ function startKeepAlive() {
     keepAliveInterval = setInterval(function(){
         console.log("Keep-alive tick...");
     }, 2000);
-    console.log("心跳保活机制已启动");
+    console.log("稳定机制已启动");
 }
 
 function stopKeepAlive() {
     if (keepAliveInterval) {
         clearInterval(keepAliveInterval);
         keepAliveInterval = null;
-        console.log("心跳保活机制已停止");
+        console.log("稳定机制已停止");
     }
 }
 
 function getDelay(key) {
-    return (settings && settings.delays && settings.delays[key]) || config.delays[key];
+    return (settings && settings.delays && settings.delays[key]) ? settings.delays[key] : config.delays[key] || 50;
 }
 
 function launchAppSafely(packageName) {
     StatusUpdater.floaty("启动: " + packageName.split('.').pop());
     launch(packageName);
-    sleep(getDelay('psLaunch'));
     if (currentPackage() !== packageName) {
         console.warn("启动 " + packageName + " 检测失败");
     }
@@ -112,35 +113,55 @@ function clickWithValidation(x, y, description) {
     if (!click(x, y)) {
         console.error("点击失败: " + description);
     }
-    sleep(getDelay('click') + 50);
 }
 
 // ===============================================================
 // ===                 工作流步骤定义                      ===
 // ===============================================================
 function step1_loadPSProject() {
-    launchAppSafely(config.ps.package);
+    // === 优化：智能跳转，避免重复启动 ===
+    if (currentPackage() !== config.ps.package) {
+        // 如果当前不在PStouch，则启动它。
+        StatusUpdater.floaty("跳转至PStouch...");
+        launchAppSafely(config.ps.package);
+    } else {
+        StatusUpdater.floaty("已在PStouch中，继续...");
+    }
+    // === 后续操作保持不变 ===
     var psCoords = config.ps.snakePositions[currentPsIndex];
     if (!psCoords) throw new Error("PS坐标索引 " + currentPsIndex + " 无效");
+    sleep(getDelay('psLaunch'));
     clickWithValidation(psCoords[0], psCoords[1], "PS项目" + currentPsIndex);
-    sleep(getDelay('psClick'));
+    // sleep(getDelay('psClick'));
 }
 
+// function step1_loadPSProject() {
+    // launchAppSafely(config.ps.package);
+    // var psCoords = config.ps.snakePositions[currentPsIndex];
+    // if (!psCoords) throw new Error("PS坐标索引 " + currentPsIndex + " 无效");
+    // sleep(getDelay('psLaunch'));
+    // clickWithValidation(psCoords[0], psCoords[1], "PS项目" + currentPsIndex);
+    // sleep(getDelay('psClick'));
+// }
+
 function step2_selectMTMaterial() {
-    sleep(getDelay('mtBeforeLaunch'));
+    sleep(getDelay('delay_before_mt_launch'));
+    StatusUpdater.floaty("跳转mt前等待缓冲中");
     launchAppSafely(config.mt.package);
     var mtCoords = config.mt.imageCoords[currentMtIndex];
     if (!mtCoords) throw new Error("MT坐标索引 " + currentMtIndex + " 无效");
+    sleep(getDelay('mtBeforeLaunch'));
     clickWithValidation(mtCoords[0], mtCoords[1], "MT特效" + currentMtIndex);
+    sleep(getDelay('mtAfterLaunch'));
 }
 
 function step3_waitAndLoad() {
-    StatusUpdater.floaty("等待界面加载...");
+    StatusUpdater.floaty("等待输入界面加载...");
     sleep(getDelay('beforeInput'));
 }
 
 function step4_inputParameters() {
-    StatusUpdater.floaty("输入所有参数...");
+    StatusUpdater.floaty("输入设定参数...");
     inputPSValueFixed("w", currentParams.w);
     inputPSValueFixed("h", currentParams.h);
     inputPSValueFixed("x", currentParams.x);
@@ -148,7 +169,7 @@ function step4_inputParameters() {
 }
 
 function step5_applyAndReturn() {
-    clickWithValidation(994, 2062, "应用参数按钮");
+    clickWithValidation(config.ps.applyBtn[0], config.ps.applyBtn[1], "应用参数");
     sleep(200);
 }
 
@@ -156,18 +177,18 @@ function step6_handleAdvanced() {
     if (settings.checkbox_opacity || settings.checkbox_blendmode) {
         handleAdvancedSettings();
     } else {
-        StatusUpdater.floaty("跳过高级设置");
+        StatusUpdater.floaty("跳过不透明度或叠加方式");
     }
 }
 
 function step7_clickSave() {
     sleep(getDelay('saveClick1'));
-    clickWithValidation(config.ps.saveBtn[0], config.ps.saveBtn[1], "保存按钮");
+    clickWithValidation(config.ps.saveBtn[0], config.ps.saveBtn[1], "点击保存");
 }
 
 function step8_confirmSave() {
     sleep(getDelay('saveClick2'));
-    clickWithValidation(config.ps.saveConfirmBtn[0], config.ps.saveConfirmBtn[1], "确认保存按钮");
+    clickWithValidation(config.ps.saveConfirmBtn[0], config.ps.saveConfirmBtn[1], "确认保存");
     sleep(getDelay('saveFinal'));
 }
 
@@ -185,64 +206,122 @@ var stepMap = {
 // ===============================================================
 // ===                 核心功能函数                      ===
 // ===============================================================
+
+// === 调试方案：保留Gestures的魅力，但用sleep()强制控制节奏 ===
 function inputPSValueFixed(field, value) {
-    if (!settings["switch_" + field] && ['w', 'h', 'x', 'y'].indexOf(field) > -1) {
+    // 1. 统一的参数检查
+    if (['w', 'h', 'x', 'y'].indexOf(field) > -1 && !settings["switch_" + field]) {
         StatusUpdater.floaty("跳过输入: " + field);
         return;
     }
-    var cfg = config.ps[field];
-    if (!cfg) { console.error("字段配置不存在: " + field); return; }
-    var useFastInput = settings.fast_input;
-    StatusUpdater.floaty("输入 " + field + " = " + value);
-    var valStr = String(value);
-
-    if (useFastInput) {
-        var gestureSequence = [];
-        var clickDuration = 1;
-        var isSlowMotion = settings.slow_motion;
-        
-        // ==================== 核心速度调节 ====================
-        var customDelay = parseInt(settings.fast_input_delay) || 30; // 读取用户设置，默认30ms
-        var delayBetweenClicks = isSlowMotion ? 200 : customDelay; // 应用延迟
-        // ======================================================
-
-        gestureSequence.push([isSlowMotion ? 200 : 1, clickDuration, cfg.inputBox]);
-        gestureSequence.push([delayBetweenClicks, clickDuration, cfg.clearBtn]);
-        if ((field === "x" || field === "y") && valStr.startsWith("-")) {
-            if (cfg.numKeys["-"]) { gestureSequence.push([delayBetweenClicks, clickDuration, cfg.numKeys["-"]]); }
-            valStr = valStr.substring(1);
-        }
-        for (var i = 0; i < valStr.length; i++) {
-            var char = valStr.charAt(i);
-            if (cfg.numKeys[char]) { gestureSequence.push([delayBetweenClicks, clickDuration, cfg.numKeys[char]]); }
-            else if (char === ".") { break; }
-        }
-        gestureSequence.push([delayBetweenClicks, clickDuration, cfg.confirmBtn]);
-        gestures.apply(null, gestureSequence);
-    } else {
-        clickWithValidation(cfg.inputBox[0], cfg.inputBox[1], field + "输入框");
-        clickWithValidation(cfg.clearBtn[0], cfg.clearBtn[1], "清除");
-        if ((field === "x" || field === "y") && valStr.startsWith("-")) {
-            if (cfg.numKeys["-"]) { clickWithValidation(cfg.numKeys["-"][0], cfg.numKeys["-"][1], "负号"); }
-            valStr = valStr.substring(1);
-        }
-        for (var i = 0; i < valStr.length; i++) {
-            var char = valStr.charAt(i);
-            if (cfg.numKeys[char]) { clickWithValidation(cfg.numKeys[char][0], cfg.numKeys[char][1], "数字" + char); }
-            else if (char === ".") { break; }
-        }
-        clickWithValidation(cfg.confirmBtn[0], cfg.confirmBtn[1], "确认");
+    if (value === undefined || value === null || String(value).trim() === "") {
+        console.error("尝试输入无效值到字段: " + field);
+        return;
     }
-    sleep(50);
+
+    var cfg = config.ps[field];
+    if (!cfg) {
+        console.error("字段配置不存在: " + field);
+        return;
+    }
+    
+    StatusUpdater.floaty("输入 " + field + " = " + value);
+    var valStr = String(value).trim();
+
+    // 2. 根据UI开关，智能选择模式
+    if (settings.fast_input) {
+        // --- “监工模式”的快速输入 (Gestures + Sleep) ---
+        try {
+            var isSlowMotion = settings.slow_motion;
+            var initialDelay = parseInt(settings.fast_input_delay) || 80;
+            var digitDelay = parseInt(settings.fast_input_digit_delay) || 70;
+
+            if (isSlowMotion) {
+                initialDelay = 400;
+                digitDelay = 200;
+            }
+
+            // 监工开始：每个动作都拆开，用可靠的sleep控制
+            // gestures的delay参数设为0，我们不再信任它
+            gestures([0, 1, cfg.inputBox]);
+            sleep(initialDelay);
+            
+            gestures([0, 1, cfg.clearBtn]);
+            
+            if ((field === "x" || field === "y") && valStr.startsWith("-")) {
+                if (cfg.numKeys["-"]) {
+                    sleep(digitDelay);
+                    gestures([0, 1, cfg.numKeys["-"]]);
+                }
+                valStr = valStr.substring(1);
+            }
+
+            for (var i = 0; i < valStr.length; i++) {
+                var char = valStr.charAt(i);
+                if (cfg.numKeys[char]) {
+                    sleep(digitDelay);
+                    gestures([0, 1, cfg.numKeys[char]]);
+                } else if (char === "." && cfg.numKeys["."]) {
+                    sleep(digitDelay);
+                    gestures([0, 1, cfg.numKeys["."]]);
+                }
+            }
+            
+            sleep(initialDelay);
+            gestures([0, 1, cfg.confirmBtn]);
+
+            sleep(150);
+
+        } catch (e) {
+            console.error("快速输入字段出错: " + field + ", 错误: " + e.message);
+            throw e;
+        }
+
+    } else {
+        // --- 慢速输入模式 (使用您喜欢的原始Click方式) ---
+        try {
+            clickWithValidation(cfg.inputBox[0], cfg.inputBox[1], field + "输入框");
+            sleep(150); 
+            clickWithValidation(cfg.clearBtn[0], cfg.clearBtn[1], "清除按钮");
+            sleep(100);
+
+            if ((field === "x" || field === "y") && valStr.startsWith("-")) {
+                if (cfg.numKeys["-"]) {
+                    clickWithValidation(cfg.numKeys["-"][0], cfg.numKeys["-"][1], "负号");
+                    sleep(50);
+                }
+                valStr = valStr.substring(1);
+            }
+
+            for (var i = 0; i < valStr.length; i++) {
+                var char = valStr.charAt(i);
+                if (cfg.numKeys[char]) {
+                    clickWithValidation(cfg.numKeys[char][0], cfg.numKeys[char][1], "数字" + char);
+                    sleep(50); 
+                } else if (char === "." && cfg.numKeys["."]) {
+                     clickWithValidation(cfg.numKeys["."][0], cfg.numKeys["."][1], "小数点");
+                     sleep(50);
+                }
+            }
+
+            clickWithValidation(cfg.confirmBtn[0], cfg.confirmBtn[1], "确认按钮");
+            sleep(150);
+
+        } catch (e) {
+            console.error("输入字段出错: " + field + ", 错误: " + e.message);
+            throw e;
+        }
+    }
 }
+
 
 function handleAdvancedSettings() {
     var cfg_bm = config.ps.blendMode;
     StatusUpdater.floaty("进入高级设置...");
-    sleep(350);
-    clickWithValidation(cfg_bm.activatePos1[0], cfg_bm.activatePos1[1], "高级设置激活1");
-    sleep(350);
-    clickWithValidation(cfg_bm.activatePos2[0], cfg_bm.activatePos2[1], "高级设置激活2");
+    sleep(250);
+    clickWithValidation(cfg_bm.activatePos1[0], cfg_bm.activatePos1[1], "点击调出图层步骤1");
+    sleep(200);
+    clickWithValidation(cfg_bm.activatePos2[0], cfg_bm.activatePos2[1], "点击调出图层步骤2");
     sleep(100);
     if (settings.checkbox_opacity) {
         var baseOpacity = parseInt(settings.opacity) || 80;
@@ -271,7 +350,7 @@ function handleAdvancedSettings() {
     }
     if (settings.checkbox_blendmode) {
         clickWithValidation(cfg_bm.blendModeInput[0], cfg_bm.blendModeInput[1], "混合模式输入");
-        sleep(450);
+        sleep(150);
         var mode = settings.blendmode;
         if (cfg_bm.modes[mode]) {
             clickWithValidation(cfg_bm.modes[mode][0], cfg_bm.modes[mode][1], "混合模式" + mode);
@@ -324,8 +403,11 @@ function executePreprocess() {
         var coords = config.ps.snakePositions[snakeIndex];
         clickWithValidation(coords[0], coords[1], "预处理项目" + snakeIndex);
         sleep(getDelay('psClick'));
-        var standardOperations = [[963, 2287], [971, 1861], [963, 2287]];
-        standardOperations.forEach(function(pos, index) { clickWithValidation(pos[0], pos[1], "标准操作" + (index + 1)); sleep(50); });
+        var standardOperations = [[963, 2287], [961, 1995], [963, 1817], [970, 1645], [961, 1995], [963, 1817], [970, 1645]];
+        standardOperations.forEach(function(pos, index) { 
+            clickWithValidation(pos[0], pos[1], "标准操作" + (index + 1)); 
+            sleep(150); 
+        });
         step7_clickSave();
         step8_confirmSave();
     }
@@ -341,10 +423,59 @@ function main() {
     startKeepAlive();
     StatusUpdater.createFloaty();
     try {
-        var configStorage = storages.create("LiangSheng_AutoTexture_Config");
+        var configStorage = storages.create("LiangSheng_AutoTexture_Config_v2");
         settings = configStorage.get("settings");
-        if (!settings) { toast("错误：找不到配置信息"); return; }
+
+        if (!settings) {
+            toast("致命错误：无法从主程序获取配置信息！");
+            throw new Error("Settings object is null or undefined.");
+        }
         
+        if (!settings.delays) { settings.delays = {}; }
+        
+        for (var key in config.delays) {
+            if (settings.delays.hasOwnProperty(key)) {
+                config.delays[key] = settings.delays[key];
+            }
+        }
+        console.log("用户自定义延迟已加载并应用。");
+        
+        if (settings.coordinates) {
+            var savedCoords = settings.coordinates;
+            
+            function mergeCoords(target, source) {
+                if (!source) return;
+                for (var key in source) {
+                    if (source.hasOwnProperty(key) && source[key] !== undefined) {
+                        if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
+                            if (!target[key]) target[key] = {};
+                            mergeCoords(target[key], source[key]);
+                        } else {
+                            target[key] = source[key];
+                        }
+                    }
+                }
+            }
+            
+            // 安全地合并所有坐标
+            if (savedCoords.mt_imageCoords) { config.mt.imageCoords = savedCoords.mt_imageCoords; }
+            if (savedCoords.ps_snakePositions) { config.ps.snakePositions = savedCoords.ps_snakePositions; }
+            if (savedCoords.ps_applyBtn) { config.ps.applyBtn = savedCoords.ps_applyBtn; }
+            if (savedCoords.ps_saveBtn) { config.ps.saveBtn = savedCoords.ps_saveBtn; }
+            if (savedCoords.ps_saveConfirmBtn) { config.ps.saveConfirmBtn = savedCoords.ps_saveConfirmBtn; }
+            
+            mergeCoords(config.ps.w, savedCoords.ps_w);
+            mergeCoords(config.ps.h, savedCoords.ps_h);
+            mergeCoords(config.ps.x, savedCoords.ps_x);
+            mergeCoords(config.ps.y, savedCoords.ps_y);
+            mergeCoords(config.ps.opacity, savedCoords.ps_opacity);
+            mergeCoords(config.ps.blendMode, savedCoords.ps_blend_advanced);
+            if (savedCoords.ps_blend_modes) { mergeCoords(config.ps.blendMode, { modes: savedCoords.ps_blend_modes }); }
+
+            console.log("用户自定义坐标已加载并应用。");
+        }
+
+        // 正常执行任务
         if (settings.task_type === 'preprocess') {
             executePreprocess();
         } else {
@@ -373,20 +504,20 @@ function main() {
                     else { console.error("未找到步骤函数: " + stepId); }
                 }
             }
-            StatusUpdater.floaty("🎉 全部完成!");
+            StatusUpdater.floaty("全部完成!");
             StatusUpdater.progress(psOrder.length, psOrder.length);
             toast("全部工作流执行完毕！");
         }
-        sleep(3000);
+        sleep(2000);
     } catch (e) {
         toast("处理出错: " + e.message);
         StatusUpdater.floaty("❌ 处理出错: " + e.message);
         console.error("主程序错误: ", e);
-        sleep(5000);
+        sleep(4000);
     } finally {
         StatusUpdater.closeFloaty();
         stopKeepAlive();
-        console.log("Worker脚本执行完毕。");
+        console.log("脚本执行完毕。");
     }
 }
 
