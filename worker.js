@@ -9,6 +9,8 @@ var currentPsIndex;
 var currentMtIndex;
 var psOrderSnapshot;
 var keepAliveInterval;
+// [新增] 用于跟踪当前处理到第几个批次 (0代表第一批次)
+var batchCounter = 0; 
 
 // ===============================================================
 // ===                 核心配置数据 (硬编码)                   ===
@@ -33,12 +35,30 @@ var config = {
           blendMode: { activatePos1: [995, 2400], activatePos2: [903, 2170], blendModeInput: [557, 2174], modes: { "滤色": [497, 1791], "变暗": [157, 1362], "线性减淡": [467, 1909] } },
           saveBtn: [90, 148],
           saveConfirmBtn: [537, 1138],
-          applyBtn: [994, 2062]
+          applyBtn: [994, 2062],
+          gaussianBlur: {
+              addLayerBtn: [540, 2050],
+              duplicateLayerBtn: [540, 1900],
+              doneBtn: [990, 2050],
+              fxBtn: [60, 240],
+              page1Btn: [150, 240],
+              blurBtn: [150, 800],
+              confirmBtn: [990, 100]
+          },
+          gradientMap: {
+              fxBtn: [60, 240],
+              page2Btn: [300, 240],
+              mapBtn: [150, 900],
+              confirmBtn: [990, 100]
+          }
      },
-          delays: {
+     delays: {
           click: 1, psLaunch: 1000, 
-          delay_before_mt_launch: 3000, // <--- 新增此行，设定一个默认值
-          psClick: 1500, mtBeforeLaunch: 1000, mtAfterLaunch: 700, beforeInput: 850, saveClick1: 800, saveClick2: 100, saveFinal: 500
+          delay_before_mt_launch: 3000,
+          psClick: 1500, mtBeforeLaunch: 1000, mtAfterLaunch: 700, beforeInput: 850, saveClick1: 800, saveClick2: 100, saveFinal: 500,
+          delay_before_layer_panel: 200,
+          delay_between_steps: 300,
+          batchSwitch: 1500 // 新增：为新延迟提供默认值
      }
 };
 
@@ -47,6 +67,7 @@ var config = {
 // ===============================================================
 var StatusUpdater = {
     floatyWindow: null,
+    stopButtonWindow: null,
     floaty: function(message) {
         if (this.floatyWindow) {
             ui.run(function() { try { this.floatyWindow.text.setText(message); } catch (e) {} }.bind(this));
@@ -60,6 +81,7 @@ var StatusUpdater = {
     },
     createFloaty: function() {
         if (this.floatyWindow) return;
+
         this.floatyWindow = floaty.window(
             <frame w="200dp" h="auto" bg="#88000000" padding="8dp" cornerRadius="10dp" touchable="false">
                 <vertical>
@@ -68,13 +90,34 @@ var StatusUpdater = {
                 </vertical>
             </frame>
         );
-        var x_pos = device.width - 780;//越大越往左偏移
+        var x_pos = device.width - 400;
         var y_pos = 1;
         this.floatyWindow.setPosition(x_pos, y_pos);
+        
+        this.stopButtonWindow = floaty.window(
+            <button id="stop_button" text="停止" w="80px" h="80px" bg="#E74C3C" textColor="#FFFFFF" textSize="12sp"/>
+        );
+        
+        var stopButtonX = device.width - 160;
+        var stopButtonY = 190;
+        this.stopButtonWindow.setPosition(stopButtonX, stopButtonY);
+
+        this.stopButtonWindow.stop_button.on("click", function() {
+            toast("任务已强制停止！");
+            engines.stopAll();
+        });
+
         this.floaty("任务已启动...");
     },
     closeFloaty: function() {
-        if (this.floatyWindow) { this.floatyWindow.close(); this.floatyWindow = null; }
+        if (this.floatyWindow) { 
+            this.floatyWindow.close(); 
+            this.floatyWindow = null; 
+        }
+        if (this.stopButtonWindow) {
+            this.stopButtonWindow.close();
+            this.stopButtonWindow = null;
+        }
     }
 };
 
@@ -119,30 +162,17 @@ function clickWithValidation(x, y, description) {
 // ===                 工作流步骤定义                      ===
 // ===============================================================
 function step1_loadPSProject() {
-    // === 优化：智能跳转，避免重复启动 ===
     if (currentPackage() !== config.ps.package) {
-        // 如果当前不在PStouch，则启动它。
         StatusUpdater.floaty("跳转至PStouch...");
         launchAppSafely(config.ps.package);
     } else {
         StatusUpdater.floaty("已在PStouch中，继续...");
     }
-    // === 后续操作保持不变 ===
     var psCoords = config.ps.snakePositions[currentPsIndex];
     if (!psCoords) throw new Error("PS坐标索引 " + currentPsIndex + " 无效");
     sleep(getDelay('psLaunch'));
     clickWithValidation(psCoords[0], psCoords[1], "PS项目" + currentPsIndex);
-    // sleep(getDelay('psClick'));
 }
-
-// function step1_loadPSProject() {
-    // launchAppSafely(config.ps.package);
-    // var psCoords = config.ps.snakePositions[currentPsIndex];
-    // if (!psCoords) throw new Error("PS坐标索引 " + currentPsIndex + " 无效");
-    // sleep(getDelay('psLaunch'));
-    // clickWithValidation(psCoords[0], psCoords[1], "PS项目" + currentPsIndex);
-    // sleep(getDelay('psClick'));
-// }
 
 function step2_selectMTMaterial() {
     sleep(getDelay('delay_before_mt_launch'));
@@ -170,7 +200,6 @@ function step4_inputParameters() {
 
 function step5_applyAndReturn() {
     clickWithValidation(config.ps.applyBtn[0], config.ps.applyBtn[1], "应用参数");
-    sleep(200);
 }
 
 function step6_handleAdvanced() {
@@ -197,19 +226,91 @@ function step9_custom() {
     sleep(1000);
 }
 
+function applyAdvancedSettingsToActiveLayer() {
+    StatusUpdater.floaty("应用高级设置到新图层...");
+    if (settings.checkbox_opacity) {
+        inputPSValueFixed('opacity', parseInt(settings.opacity) || 80);
+    }
+    if (settings.checkbox_blendmode) {
+        var cfg_bm = config.ps.blendMode;
+        clickWithValidation(cfg_bm.blendModeInput[0], cfg_bm.blendModeInput[1], "混合模式输入");
+        sleep(getDelay('delay_between_steps'));
+        var mode = settings.blendmode;
+        if (cfg_bm.modes[mode]) {
+            clickWithValidation(cfg_bm.modes[mode][0], cfg_bm.modes[mode][1], "混合模式" + mode);
+        }
+    }
+}
+
+function step10_gaussianBlurOverlay() {
+    StatusUpdater.floaty("执行高斯模糊叠加...");
+    var cfg_blur = config.ps.gaussianBlur;
+    var cfg_blend = config.ps.blendMode;
+
+    sleep(getDelay('delay_before_layer_panel'));
+    clickWithValidation(cfg_blend.activatePos1[0], cfg_blend.activatePos1[1], "打开图层面板"); 
+    sleep(getDelay('delay_between_steps'));
+    clickWithValidation(cfg_blur.addLayerBtn[0], cfg_blur.addLayerBtn[1], "添加图层"); 
+    sleep(getDelay('delay_between_steps'));
+    clickWithValidation(cfg_blur.duplicateLayerBtn[0], cfg_blur.duplicateLayerBtn[1], "复制图层"); 
+    sleep(getDelay('delay_between_steps'));
+    clickWithValidation(cfg_blur.doneBtn[0], cfg_blur.doneBtn[1], "完成"); 
+
+    if (settings.checkbox_opacity || settings.checkbox_blendmode) {
+        clickWithValidation(cfg_blend.activatePos2[0], cfg_blend.activatePos2[1], "打开图层属性"); 
+        sleep(getDelay('delay_between_steps'));
+        applyAdvancedSettingsToActiveLayer();
+    }
+
+    clickWithValidation(cfg_blur.fxBtn[0], cfg_blur.fxBtn[1], "打开FX效果"); 
+    sleep(getDelay('delay_between_steps'));
+    clickWithValidation(cfg_blur.page1Btn[0], cfg_blur.page1Btn[1], "返回FX第一页"); 
+    sleep(getDelay('delay_between_steps'));
+    clickWithValidation(cfg_blur.blurBtn[0], cfg_blur.blurBtn[1], "选择高斯模糊"); 
+    sleep(getDelay('delay_between_steps'));
+    clickWithValidation(cfg_blur.confirmBtn[0], cfg_blur.confirmBtn[1], "确认效果");
+}
+
+function step11_gradientMap() {
+    StatusUpdater.floaty("执行渐变映射...");
+    var cfg = config.ps.gradientMap;
+    sleep(getDelay('delay_before_layer_panel'));
+    clickWithValidation(cfg.fxBtn[0], cfg.fxBtn[1], "打开FX效果"); 
+    sleep(getDelay('delay_between_steps'));
+    clickWithValidation(cfg.page2Btn[0], cfg.page2Btn[1], "切换到第二页"); 
+    sleep(getDelay('delay_between_steps'));
+    clickWithValidation(cfg.mapBtn[0], cfg.mapBtn[1], "选择渐变映射"); 
+    sleep(getDelay('delay_between_steps'));
+    clickWithValidation(cfg.confirmBtn[0], cfg.confirmBtn[1], "确认效果");
+}
+
+// [新增] 批次切换的专属步骤函数
+function step_switch_to_next_batch() {
+    StatusUpdater.floaty("切换到下一批次...");
+    // 点击第一个项目槽位，以进入下一页/文件夹
+    sleep(getDelay('batchSwitch'));
+    clickWithValidation(config.ps.snakePositions[0][0], config.ps.snakePositions[0][1], "切换批次");
+    // 使用新的自定义延迟等待加载
+    sleep(getDelay('batchSwitch'));
+    // 批次计数器加一，以便后续步骤知道要使用哪套数据
+    batchCounter++;
+}
+
+// [修改] stepMap现在包含新的步骤
 var stepMap = {
     'step1': step1_loadPSProject, 'step2': step2_selectMTMaterial, 'step3': step3_waitAndLoad,
     'step4': step4_inputParameters, 'step5': step5_applyAndReturn, 'step6': step6_handleAdvanced,
-    'step7': step7_clickSave, 'step8': step8_confirmSave, 'step9': step9_custom
+    'step7': step7_clickSave, 'step8': step8_confirmSave, 'step9': step9_custom,
+    'step10': step10_gaussianBlurOverlay,
+    'step11': step11_gradientMap,
+    'switch_to_next_batch': step_switch_to_next_batch // 新增步骤映射
 };
 
 // ===============================================================
 // ===                 核心功能函数                      ===
 // ===============================================================
 
-// === 调试方案：保留Gestures的魅力，但用sleep()强制控制节奏 ===
 function inputPSValueFixed(field, value) {
-    // 1. 统一的参数检查
     if (['w', 'h', 'x', 'y'].indexOf(field) > -1 && !settings["switch_" + field]) {
         StatusUpdater.floaty("跳过输入: " + field);
         return;
@@ -228,9 +329,7 @@ function inputPSValueFixed(field, value) {
     StatusUpdater.floaty("输入 " + field + " = " + value);
     var valStr = String(value).trim();
 
-    // 2. 根据UI开关，智能选择模式
     if (settings.fast_input) {
-        // --- “监工模式”的快速输入 (Gestures + Sleep) ---
         try {
             var isSlowMotion = settings.slow_motion;
             var initialDelay = parseInt(settings.fast_input_delay) || 80;
@@ -241,8 +340,6 @@ function inputPSValueFixed(field, value) {
                 digitDelay = 200;
             }
 
-            // 监工开始：每个动作都拆开，用可靠的sleep控制
-            // gestures的delay参数设为0，我们不再信任它
             gestures([0, 1, cfg.inputBox]);
             sleep(initialDelay);
             
@@ -278,7 +375,6 @@ function inputPSValueFixed(field, value) {
         }
 
     } else {
-        // --- 慢速输入模式 (使用您喜欢的原始Click方式) ---
         try {
             clickWithValidation(cfg.inputBox[0], cfg.inputBox[1], field + "输入框");
             sleep(150); 
@@ -318,11 +414,11 @@ function inputPSValueFixed(field, value) {
 function handleAdvancedSettings() {
     var cfg_bm = config.ps.blendMode;
     StatusUpdater.floaty("进入高级设置...");
-    sleep(250);
+    sleep(getDelay('delay_before_layer_panel'));
     clickWithValidation(cfg_bm.activatePos1[0], cfg_bm.activatePos1[1], "点击调出图层步骤1");
-    sleep(200);
+    sleep(getDelay('delay_between_steps'));
     clickWithValidation(cfg_bm.activatePos2[0], cfg_bm.activatePos2[1], "点击调出图层步骤2");
-    sleep(100);
+    sleep(getDelay('delay_between_steps'));
     if (settings.checkbox_opacity) {
         var baseOpacity = parseInt(settings.opacity) || 80;
         baseOpacity = Math.max(5, Math.min(95, baseOpacity));
@@ -349,10 +445,12 @@ function handleAdvancedSettings() {
         inputPSValueFixed('opacity', Math.round(finalOpacity));
     }
     if (settings.checkbox_blendmode) {
+    sleep(getDelay('delay_between_steps'));
         clickWithValidation(cfg_bm.blendModeInput[0], cfg_bm.blendModeInput[1], "混合模式输入");
         sleep(150);
         var mode = settings.blendmode;
         if (cfg_bm.modes[mode]) {
+        sleep(getDelay('delay_between_steps'));
             clickWithValidation(cfg_bm.modes[mode][0], cfg_bm.modes[mode][1], "混合模式" + mode);
         }
     }
@@ -423,7 +521,8 @@ function main() {
     startKeepAlive();
     StatusUpdater.createFloaty();
     try {
-        var configStorage = storages.create("LiangSheng_AutoTexture_Config_v2");
+        // [修改] 使用新的存储名称
+        var configStorage = storages.create("LiangSheng_AutoTexture_Config_v3");
         settings = configStorage.get("settings");
 
         if (!settings) {
@@ -457,7 +556,6 @@ function main() {
                 }
             }
             
-            // 安全地合并所有坐标
             if (savedCoords.mt_imageCoords) { config.mt.imageCoords = savedCoords.mt_imageCoords; }
             if (savedCoords.ps_snakePositions) { config.ps.snakePositions = savedCoords.ps_snakePositions; }
             if (savedCoords.ps_applyBtn) { config.ps.applyBtn = savedCoords.ps_applyBtn; }
@@ -471,41 +569,100 @@ function main() {
             mergeCoords(config.ps.opacity, savedCoords.ps_opacity);
             mergeCoords(config.ps.blendMode, savedCoords.ps_blend_advanced);
             if (savedCoords.ps_blend_modes) { mergeCoords(config.ps.blendMode, { modes: savedCoords.ps_blend_modes }); }
+            mergeCoords(config.ps.gaussianBlur, savedCoords.ps_gaussianBlur);
+            mergeCoords(config.ps.gradientMap, savedCoords.ps_gradientMap);
 
             console.log("用户自定义坐标已加载并应用。");
         }
 
-        // 正常执行任务
         if (settings.task_type === 'preprocess') {
             executePreprocess();
         } else {
-            var psOrder = settings.ps_order.split(',').map(function(n) { return Number(n.trim()); });
-            var mtOrder = settings.mt_order.split(',').map(function(n) { return Number(n.trim()); });
-            var currentWorkflow = settings.workflow;
-            psOrderSnapshot = [].concat(psOrder);
-            StatusUpdater.progress(0, psOrder.length);
-            for (var i = 0; i < psOrder.length; i++) {
-                currentPsIndex = psOrder[i];
-                currentMtIndex = mtOrder[i];
-                var statusMsg = "处理: " + (i + 1) + "/" + psOrder.length + " 张";
-                StatusUpdater.floaty(statusMsg);
-                StatusUpdater.progress(i + 1, psOrder.length);
-                currentParams = { w: settings.w, h: settings.h, x: settings.x, y: settings.y };
-                if (settings.switch_z) {
-                    var zoomEndIndex = parseInt(settings.z_end_index) || psOrder.length;
-                    if (i < zoomEndIndex) {
-                        currentParams = calculateZoomValues(i);
-                    }
-                }
-                for (var j = 0; j < currentWorkflow.length; j++) {
-                    var stepId = currentWorkflow[j];
-                    var stepFunction = stepMap[stepId];
-                    if (stepFunction) { stepFunction(); }
-                    else { console.error("未找到步骤函数: " + stepId); }
+            // ===============================================================
+            // ===          [重构] 工作流与多批次处理引擎核心             ===
+            // ===============================================================
+
+            // 1. 构建批次任务队列
+            var batchTasks = [];
+            var totalItems = 0;
+
+            // 批次一 (必须)
+            var psOrder1 = settings.ps_order.split(',').map(function(n) { return Number(n.trim()); });
+            var mtOrder1 = settings.mt_order.split(',').map(function(n) { return Number(n.trim()); });
+            batchTasks.push({ psOrder: psOrder1, mtOrder: mtOrder1 });
+            totalItems += psOrder1.length;
+            
+            // 批次二 (可选)
+            if (settings.batch2_enabled && settings.order_batch2) {
+                var psOrder2 = settings.order_batch2.split(',').map(function(n) { return Number(n.trim()); });
+                var mtOrder2 = settings.mt_order_batch2.split(',').map(function(n) { return Number(n.trim()); });
+                if (psOrder2.length > 0) {
+                    batchTasks.push({ psOrder: psOrder2, mtOrder: mtOrder2 });
+                    totalItems += psOrder2.length;
                 }
             }
+            
+            // 2. 初始化
+            var currentWorkflow = settings.workflow;
+            if (!currentWorkflow || currentWorkflow.length === 0) {
+                throw new Error("工作流为空，无法执行任务。");
+            }
+            
+            var itemsProcessed = 0;
+            StatusUpdater.progress(0, totalItems);
+
+            // 3. 遍历工作流执行
+            for (var i = 0; i < currentWorkflow.length; i++) {
+                var stepId = currentWorkflow[i];
+                var stepFunction = stepMap[stepId];
+
+                // 如果是处理数据的步骤 (如step4)，则需要为当前批次的所有项目执行一遍
+                if (stepId === 'step4') {
+                    var currentBatch = batchTasks[batchCounter];
+                    if (!currentBatch) {
+                        console.error("尝试处理一个不存在的批次: " + batchCounter);
+                        continue;
+                    }
+
+                    // 为当前批次的每个项目执行输入
+                    for (var j = 0; j < currentBatch.psOrder.length; j++) {
+                        itemsProcessed++;
+                        currentPsIndex = currentBatch.psOrder[j];
+                        currentMtIndex = currentBatch.mtOrder[j];
+                        psOrderSnapshot = [].concat(currentBatch.psOrder); // 更新快照为当前批次
+
+                        var statusMsg = "处理: " + itemsProcessed + "/" + totalItems + " 张 (批次 " + (batchCounter + 1) + ")";
+                        StatusUpdater.floaty(statusMsg);
+                        StatusUpdater.progress(itemsProcessed, totalItems);
+
+                        // 准备参数
+                        currentParams = { w: settings.w, h: settings.h, x: settings.x, y: settings.y };
+                        if (settings.switch_z) {
+                            var zoomEndIndex = parseInt(settings.z_end_index) || currentBatch.psOrder.length;
+                            if (j < zoomEndIndex) {
+                                currentParams = calculateZoomValues(j);
+                            }
+                        }
+                        
+                        // 执行输入参数步骤
+                        stepFunction();
+                        
+                        // 在输入参数后，通常会紧跟一个应用参数的步骤，这里我们假设工作流是这样设计的
+                        // 如果工作流中'step4'后不是'step5'，此逻辑需要调整
+                        // 但为了保持引擎的通用性，我们只处理当前步骤
+                    }
+                } else {
+                    // 对于非数据处理步骤（如加载、保存、切换批次），只执行一次
+                    if (stepFunction) {
+                        stepFunction();
+                    } else {
+                        console.error("未找到步骤函数: " + stepId);
+                    }
+                }
+            }
+            
             StatusUpdater.floaty("全部完成!");
-            StatusUpdater.progress(psOrder.length, psOrder.length);
+            StatusUpdater.progress(totalItems, totalItems);
             toast("全部工作流执行完毕！");
         }
         sleep(2000);
