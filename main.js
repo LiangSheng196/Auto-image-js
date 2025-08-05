@@ -1,17 +1,20 @@
 "ui";
 
+// [新增] 引入信息模块
+var scriptInfo = require('./info.js');
+
 // ===================================================================
 // UI界面和配置收集
 // ===================================================================
 ui.layout(
     <vertical id="root_layout" visibility="gone" bg="#f5f5f5">
-        {/* 标题栏 */}
+        //{/* 标题栏 */}
         <vertical id="title_bar" padding="16dp 16dp 20dp 16dp">
             <text id="title_text" text="联动自动贴图" textSize="24sp" gravity="center" textStyle="bold"/>
-            <text id="subtitle_text" text="v18.1.0" textSize="12sp" gravity="center" marginTop="4dp"/>
+            <text id="subtitle_text" text="" textSize="12sp" gravity="center" marginTop="4dp"/>
         </vertical>
 
-        {/* 导航栏 */}
+        //{/* 导航栏 */}
         <horizontal id="nav_bar" w="*" h="50dp" bg="#ffffff">
             <text id="tab_main" text="主要参数" layout_weight="1" gravity="center" textSize="14sp" h="*"/>
             <text id="tab_advanced" text="工作流" layout_weight="1" gravity="center" textSize="14sp" h="*"/>
@@ -20,10 +23,10 @@ ui.layout(
         </horizontal>
         <View w="*" h="2dp" id="nav_indicator" bg="#eeeeee"/>
 
-        {/* 页面容器 */}
+        //{/* 页面容器 */}
         <FrameLayout id="pages_container" layout_weight="1">
             
-            {/* 主要参数页面 */}
+            //{/* 主要参数页面 */}
             <ScrollView id="page_main">
                 <vertical padding="8dp">
                     <text text="🎯 主要参数配置" textSize="18sp" textStyle="bold" margin="16dp 0 16dp 0" gravity="center"/>
@@ -77,7 +80,7 @@ ui.layout(
                 </vertical>
             </ScrollView>
 
-            {/* 工作流页面 */}
+            //{/* 工作流页面 */}
             <ScrollView id="page_advanced" visibility="gone">
                 <vertical padding="8dp">
                     <text text="⚙️ 工作流方案管理" textSize="18sp" textStyle="bold" margin="16dp 0 16dp 0" gravity="center"/>
@@ -93,7 +96,8 @@ ui.layout(
                     </card>
                     <card w="*" margin="8dp 4dp" cardCornerRadius="8dp" cardElevation="2dp">
                         <vertical padding="16dp" id="container_current_workflow">
-                            <text text="当前激活的工作流" textSize="16sp" textStyle="bold" marginBottom="16dp"/>
+                            <text text="当前激活的工作流" textSize="16sp" textStyle="bold" marginBottom="8dp"/>
+                            <text text="提示: 使用“批次分割线”为第二批次定义不同流程。" textSize="12sp" textColor="#3498db" marginBottom="8dp"/>
                             <text id="workflow_display_current" text="..." padding="12dp" w="*" minHeight="100dp" textSize="14sp" textColor="#2c3e50" bg="#ecf0f1" singleLine="false"/>
                             <horizontal marginTop="16dp">
                                 <button id="btn_edit_workflow" text="编辑当前方案" layout_weight="1" style="Widget.AppCompat.Button.Borderless.Colored"/>
@@ -104,7 +108,7 @@ ui.layout(
                 </vertical>
             </ScrollView>
 
-            {/* 序号配置页面 */}
+            //{/* 序号配置页面 */}
             <ScrollView id="page_sequence" visibility="gone">
                 <vertical padding="8dp">
                     <text text="📋 序号与批次管理" textSize="18sp" textStyle="bold" margin="16dp 0 16dp 0" gravity="center"/>
@@ -148,7 +152,7 @@ ui.layout(
                 </vertical>
             </ScrollView>
 
-            {/* 系统设置页面 */}
+            //{/* 系统设置页面 */}
             <ScrollView id="page_settings" visibility="gone">
                 <vertical padding="8dp">
                     <text text="⚙️ 系统设置" textSize="18sp" textStyle="bold" margin="16dp 0 16dp 0" gravity="center"/>
@@ -199,9 +203,19 @@ ui.layout(
                             </vertical>
                         </vertical>
                     </card>
+
+                    //{/* [新增] 帮助与信息卡片 */}
+                    <card w="*" margin="8dp 4dp" cardCornerRadius="8dp" cardElevation="2dp">
+                        <vertical padding="16dp" id="container_help">
+                            <text text="💡 帮助与信息" textSize="16sp" textStyle="bold" marginBottom="16dp"/>
+                            <button id="btn_show_manual" text="查看使用说明" h="48dp" style="Widget.AppCompat.Button.Borderless.Colored" marginBottom="8dp"/>
+                            <button id="btn_show_changelog" text="查看更新日志" h="48dp" style="Widget.AppCompat.Button.Borderless.Colored"/>
+                        </vertical>
+                    </card>
+
                     <card w="*" margin="8dp 4dp" cardCornerRadius="8dp" cardElevation="2dp">
                         <vertical padding="16dp" id="container_about">
-                            <text text="版本：v18.1.0 (纠错与增强)" textSize="14sp" marginBottom="8dp"/>
+                            <text id="about_version_text" text="" textSize="14sp" marginBottom="8dp"/>
                             <text text="开发者：LiangSheng（by 凉笙）" textSize="14sp" marginBottom="8dp"/>
                             <text text="QQ:3084510367.邮箱：3084510367@qq.com" textSize="14sp" marginBottom="8dp"/>
                         </vertical>
@@ -285,7 +299,7 @@ var stepMap = {
     'step8': { name: "确认保存" },
     'step10': { name: "高斯模糊叠加" },
     'step11': { name: "渐变映射" },
-    'switch_to_next_batch': { name: "切换到下一批次" }
+    'split_batch': { name: "---批次分割线---" } 
 };
 
 var defaultWorkflowSchemes = {
@@ -293,7 +307,7 @@ var defaultWorkflowSchemes = {
     schemes: [
         ['step1', 'step2', 'step3', 'step4', 'step5', 'step6', 'step7', 'step8'],
         ['step1', 'step2', 'step3', 'step4', 'step5', 'step7', 'step8'],
-        ['step1', 'step2', 'step3', 'step4', 'step5', 'switch_to_next_batch', 'step4', 'step5', 'step7', 'step8']
+        ['step1', 'step2', 'step3', 'step4', 'step5', 'split_batch', 'step1', 'step10', 'step7', 'step8']
     ]
 };
 var workflowSchemes = configStorage.get("workflow_schemes", defaultWorkflowSchemes);
@@ -364,7 +378,7 @@ function openDelaySettings() {
             <text id="delay_title" text="⏱️ 延迟参数配置" textSize="20sp" gravity="center" textStyle="bold" marginBottom="8dp"/>
             <text id="delay_subtitle" text="单位：毫秒 (ms)。红色为关键延迟，请谨慎修改。" textSize="12sp" gravity="center" marginBottom="20dp"/>
             
-            <ScrollView>
+            <ScrollView layout_weight="1">
                 <vertical>
                     <vertical padding="16dp" marginBottom="12dp" id="delay_container_launch">
                         <text text="启动与加载" textSize="16sp" textStyle="bold" marginBottom="12dp"/>
@@ -429,6 +443,8 @@ function openDelaySettings() {
                             <input id="delay_save_final" inputType="number" w="100dp" h="40dp" padding="8dp" gravity="center" textSize="14sp"/>
                         </horizontal>
                     </vertical>
+                    
+                    <View h="80dp" w="*"/>
                 </vertical>
             </ScrollView>
             
@@ -441,12 +457,13 @@ function openDelaySettings() {
 
     var savedDelays = configStorage.get("delays", { 
         psLaunch: 1000, 
-        beforeInput: 850, 
-        psClick: 1500, 
+        delay_before_mt_launch: 3000,
         mtBeforeLaunch: 1000, 
         mtAfterLaunch: 700, 
-        beforeLayerPanel: 200,
-        betweenSteps: 300,
+        beforeInput: 850, 
+        psClick: 1500, 
+        delay_before_layer_panel: 200,
+        delay_between_steps: 300,
         batchSwitch: 1500,
         saveClick1: 800, 
         saveClick2: 100, 
@@ -454,14 +471,14 @@ function openDelaySettings() {
     });
 
     delayUi.delay_ps_launch.setText(String(savedDelays.psLaunch || 1000));
-    delayUi.delay_before_mt_launch.setText(String(savedDelays.mtBeforeLaunch || 1000));
+    delayUi.delay_before_mt_launch.setText(String(savedDelays.delay_before_mt_launch || 3000));
     delayUi.delay_mt_before.setText(String(savedDelays.mtBeforeLaunch || 1000));
     delayUi.delay_mt_after.setText(String(savedDelays.mtAfterLaunch || 700));
     
     delayUi.delay_before_input.setText(String(savedDelays.beforeInput || 850));
     delayUi.delay_ps_click.setText(String(savedDelays.psClick || 1500));
-    delayUi.delay_before_layer_panel.setText(String(savedDelays.beforeLayerPanel || 200));
-    delayUi.delay_between_steps.setText(String(savedDelays.betweenSteps || 300));
+    delayUi.delay_before_layer_panel.setText(String(savedDelays.delay_before_layer_panel || 200));
+    delayUi.delay_between_steps.setText(String(savedDelays.delay_between_steps || 300));
     
     delayUi.delay_batch_switch.setText(String(savedDelays.batchSwitch || 1500));
 
@@ -469,22 +486,26 @@ function openDelaySettings() {
     delayUi.delay_save_click2.setText(String(savedDelays.saveClick2 || 100));
     delayUi.delay_save_final.setText(String(savedDelays.saveFinal || 500));
 
-    var dialog = dialogs.build({ customView: delayUi, wrapInScrollView: false, autoDismiss: false }).show();
+    var dialog = dialogs.build({ 
+        customView: delayUi, 
+        wrapInScrollView: false,
+        autoDismiss: false 
+    }).show();
 
     delayUi.btn_save_delay.on("click", function() {
         var newDelays = {
             psLaunch: parseInt(delayUi.delay_ps_launch.getText()) || 1000,
+            delay_before_mt_launch: parseInt(delayUi.delay_before_mt_launch.getText()) || 3000,
             mtBeforeLaunch: parseInt(delayUi.delay_mt_before.getText()) || 1000,
             mtAfterLaunch: parseInt(delayUi.delay_mt_after.getText()) || 700,
             psClick: parseInt(delayUi.delay_ps_click.getText()) || 1500,
             beforeInput: parseInt(delayUi.delay_before_input.getText()) || 850,
-            beforeLayerPanel: parseInt(delayUi.delay_before_layer_panel.getText()) || 200,
-            betweenSteps: parseInt(delayUi.delay_between_steps.getText()) || 300,
+            delay_before_layer_panel: parseInt(delayUi.delay_before_layer_panel.getText()) || 200,
+            delay_between_steps: parseInt(delayUi.delay_between_steps.getText()) || 300,
             batchSwitch: parseInt(delayUi.delay_batch_switch.getText()) || 1500,
             saveClick1: parseInt(delayUi.delay_save_click1.getText()) || 800,
             saveClick2: parseInt(delayUi.delay_save_click2.getText()) || 100,
-            saveFinal: parseInt(delayUi.delay_save_final.getText()) || 500,
-            delay_before_mt_launch: parseInt(delayUi.delay_before_mt_launch.getText()) || 3000
+            saveFinal: parseInt(delayUi.delay_save_final.getText()) || 500
         };
         configStorage.put("delays", newDelays);
         toast("延迟设置已保存");
@@ -524,7 +545,6 @@ function openWorkflowEditor(schemeIndex) {
         </vertical>
     );
     
-    // 修复点：在UI加载后单独设置文本，避免XML解析错误
     editorUi.editor_title.setText("编辑工作流：方案 " + (schemeIndex + 1));
 
     var dialog = dialogs.build({
@@ -548,8 +568,18 @@ function openWorkflowEditor(schemeIndex) {
         var stepId = stepKeys[i];
         var button = ui.inflate(<button style="Widget.AppCompat.Button.Colored" margin="4dp" padding="12dp" textSize="12sp"/>);
         button.setText(stepMap[stepId].name);
+        
+        if (stepId === 'split_batch') {
+            button.setBackgroundColor(colors.parseColor("#f39c12")); 
+            button.setTextColor(colors.parseColor("#ffffff"));
+        }
+
         (function(id) {
             button.on('click', function() {
+                if (id === 'split_batch' && currentEditingWorkflow.indexOf('split_batch') !== -1) {
+                    toast("一个工作流中只能有一个批次分割线。");
+                    return;
+                }
                 currentEditingWorkflow.push(id);
                 updateEditingDisplay();
             });
@@ -589,18 +619,18 @@ function openWorkflowEditor(schemeIndex) {
 function openCoordinateSettings() {
     var defaultCoords = {
         ps_applyBtn: [994, 2062], ps_saveBtn: [90, 148], ps_saveConfirmBtn: [537, 1138],
-        ps_nextBatchFolderBtn: [168, 449], // 新增：默认点击第一个项目的位置
+        ps_nextBatchFolderBtn: [562, 1739], 
         mt_imageCoords: [[121, 399], [120, 509], [120, 623], [120, 736], [120, 843], [120, 949], [134, 1063], [116, 1164], [124, 1270], [109, 1396], [125, 1510], [125, 1624], [125, 1738], [125, 1852], [125, 1966], [125, 2080], [125, 2194]],
         ps_snakePositions: [[168, 449], [517, 464], [870, 427], [192, 869], [540, 844], [867, 853], [186, 1285], [540, 1280], [896, 1295], [205, 1687]],
         ps_w: { inputBox: [448, 2172], clearBtn: [642, 1786], confirmBtn: [610, 1661], numKeys: { "0": [293, 2039], "1": [233, 1918], "2": [377, 1926], "3": [476, 1894], "4": [231, 1785], "5": [349, 1799], "6": [490, 1798], "7": [222, 1635], "8": [355, 1671], "9": [489, 1636], ".": [518, 2027] } },
         ps_h: { inputBox: [442, 2328], clearBtn: [647, 1913], confirmBtn: [689, 1788], numKeys: { "0": [356, 2148], "1": [257, 2073], "2": [389, 2068], "3": [541, 2051], "4": [258, 1906], "5": [386, 1917], "6": [528, 1916], "7": [286, 1793], "8": [406, 1773], "9": [528, 1773], ".": [520, 2161] } },
         ps_x: { inputBox: [212, 2223], clearBtn: [565, 1784], confirmBtn: [534, 1635], numKeys: { "-": [100, 2000], "0": [204, 2025], "1": [127, 1926], "2": [262, 1923], "3": [397, 1928], "4": [146, 1781], "5": [268, 1781], "6": [397, 1781], "7": [136, 1652], "8": [273, 1655], "9": [398, 1655], ".": [358, 2032] } },
         ps_y: { inputBox: [167, 2313], clearBtn: [519, 1904], confirmBtn: [516, 1783], numKeys: { "-": [100, 2000], "0": [154, 2165], "1": [103, 2066], "2": [230, 2047], "3": [372, 2044], "4": [112, 1889], "5": [236, 1916], "6": [382, 1910], "7": [115, 1753], "8": [239, 1752], "9": [376, 1747], ".": [367, 2147] } },
-        ps_opacity: { inputBox: [300, 2500], clearBtn: [500, 2500], confirmBtn: [700, 2500], numKeys: { "0": [300, 2600], "1": [200, 2550], "2": [400, 2550], "3": [600, 2550], "4": [200, 2650], "5": [400, 2650], "6": [600, 2650], "7": [200, 2750], "8": [400, 2750], "9": [600, 2750] } },
-        ps_blend_advanced: { activatePos1: [995, 2400], activatePos2: [903, 2170], blendModeInput: [557, 2174] },
-        ps_blend_modes: { "滤色": [497, 1791], "变暗": [157, 1362], "线性减淡": [467, 1909] },
-        ps_gaussianBlur: { addLayerBtn: [540, 2050], duplicateLayerBtn: [540, 1900], doneBtn: [990, 2050], fxBtn: [60, 240], page1Btn: [150, 240], blurBtn: [150, 800], confirmBtn: [990, 100] },
-        ps_gradientMap: { fxBtn: [60, 240], page2Btn: [300, 240], mapBtn: [150, 900], confirmBtn: [990, 100] }
+        ps_opacity: { inputBox: [137, 1966], clearBtn: [493, 1546], confirmBtn: [496, 1390], numKeys: { "0": [137, 1779], "1": [107, 1670], "2": [241, 1680], "3": [355, 1677], "4": [100, 1550], "5": [241, 1550], "6": [359, 1548], "7": [109, 1400], "8": [245, 1410], "9": [392, 1399] } },
+        ps_blend_advanced: { activatePos1: [965, 2324], activatePos2: [884, 2185], blendModeInput: [206, 2135] },
+        ps_blend_modes: { "滤色": [154, 1791], "变暗": [157, 1362], "线性减淡": [199, 1909] },
+        ps_gaussianBlur: { addLayerBtn: [1000, 2170], duplicateLayerBtn: [257, 1303], doneBtn: [277, 1576], fxBtn: [622, 240], page1Btn: [189, 399], blurBtn: [207, 574], confirmBtn: [981, 2317] },
+        ps_gradientMap: { fxBtn: [622, 240], page2Btn: [392, 385], mapBtn: [225, 592], confirmBtn: [996, 2309] }
     };
 
     var coordsUi = ui.inflate(
@@ -619,7 +649,6 @@ function openCoordinateSettings() {
                     <horizontal gravity="center_vertical" marginBottom="8dp"><text text="应用参数按钮" layout_weight="1"/><input id="coords_apply" w="150dp" h="40dp"/></horizontal>
                     <horizontal gravity="center_vertical" marginBottom="8dp"><text text="PS 保存按钮" layout_weight="1"/><input id="coords_save" w="150dp" h="40dp"/></horizontal>
                     <horizontal gravity="center_vertical" marginBottom="8dp"><text text="PS 确认保存" layout_weight="1"/><input id="coords_confirm_save" w="150dp" h="40dp"/></horizontal>
-                    {/* 新增坐标输入框 */}
                     <horizontal gravity="center_vertical" marginBottom="8dp"><text text="切换批次/下一文件夹" layout_weight="1" textColor="#e74c3c" textStyle="bold"/><input id="coords_next_batch_folder" w="150dp" h="40dp"/></horizontal>
                     
                     <text text="MT 特效图列表" textSize="16sp" textStyle="bold" marginTop="16dp" marginBottom="8dp"/>
@@ -628,7 +657,6 @@ function openCoordinateSettings() {
                     <text text="PS 项目列表" textSize="16sp" textStyle="bold" marginTop="16dp" marginBottom="8dp"/>
                     <input id="coords_ps_projects" h="auto" minHeight="100dp" gravity="top" inputType="textMultiLine"/>
 
-                    {/* ... 此处省略大量重复的坐标输入框定义，以节省空间，但实际代码中它们是完整的 ... */}
                     <text text="宽度(W)坐标" textSize="16sp" textStyle="bold" marginTop="20dp" marginBottom="12dp"/>
                     <horizontal gravity="center_vertical" marginBottom="8dp"><text text="输入框" layout_weight="1"/><input id="coords_w_input" w="150dp" h="40dp"/></horizontal>
                     <horizontal gravity="center_vertical" marginBottom="8dp"><text text="清除按钮" layout_weight="1"/><input id="coords_w_clear" w="150dp" h="40dp"/></horizontal>
@@ -721,7 +749,7 @@ function openCoordinateSettings() {
         coordsUi.coords_apply.setText(singleCoordToStr(coords.ps_applyBtn));
         coordsUi.coords_save.setText(singleCoordToStr(coords.ps_saveBtn));
         coordsUi.coords_confirm_save.setText(singleCoordToStr(coords.ps_saveConfirmBtn));
-        coordsUi.coords_next_batch_folder.setText(singleCoordToStr(coords.ps_nextBatchFolderBtn)); // 新增
+        coordsUi.coords_next_batch_folder.setText(singleCoordToStr(coords.ps_nextBatchFolderBtn));
         coordsUi.coords_mt_images.setText(coordListToStr(coords.mt_imageCoords, 5));
         coordsUi.coords_ps_projects.setText(coordListToStr(coords.ps_snakePositions, 3));
         coordsUi.coords_w_input.setText(singleCoordToStr(coords.ps_w.inputBox));
@@ -800,7 +828,7 @@ function openCoordinateSettings() {
             newCoords.ps_applyBtn = robustStrToSingleCoord(coordsUi.coords_apply.getText()) || defaultCoords.ps_applyBtn;
             newCoords.ps_saveBtn = robustStrToSingleCoord(coordsUi.coords_save.getText()) || defaultCoords.ps_saveBtn;
             newCoords.ps_saveConfirmBtn = robustStrToSingleCoord(coordsUi.coords_confirm_save.getText()) || defaultCoords.ps_saveConfirmBtn;
-            newCoords.ps_nextBatchFolderBtn = robustStrToSingleCoord(coordsUi.coords_next_batch_folder.getText()) || defaultCoords.ps_nextBatchFolderBtn; // 新增
+            newCoords.ps_nextBatchFolderBtn = robustStrToSingleCoord(coordsUi.coords_next_batch_folder.getText()) || defaultCoords.ps_nextBatchFolderBtn;
             var parsedMtImages = robustStrToCoordList(coordsUi.coords_mt_images.getText());
             newCoords.mt_imageCoords = parsedMtImages.length > 0 ? parsedMtImages : defaultCoords.mt_imageCoords;
             var parsedPsProjects = robustStrToCoordList(coordsUi.coords_ps_projects.getText());
@@ -883,7 +911,7 @@ function applyColorStyles() {
         ui.pages_container.setBackgroundColor(colors.parseColor(colorBgLight)); ui.title_bar.setBackgroundColor(colors.parseColor(colorPrimary));
         ui.title_text.setTextColor(colors.parseColor(colorWhite)); ui.subtitle_text.setTextColor(colors.parseColor("#e8e8ff"));
         ui.nav_bar.setBackgroundColor(colors.parseColor(colorWhite)); ui.nav_indicator.setBackgroundColor(colors.parseColor(colorBgGrey));
-        var containers = ["container_size", "container_pos", "container_zoom", "container_advanced", "container_workflow_schemes", "container_current_workflow", "container_ps_order", "container_mt_order", "container_batch2", "container_preprocess", "container_fine_tuning", "container_about", "container_performance"];
+        var containers = ["container_size", "container_pos", "container_zoom", "container_advanced", "container_workflow_schemes", "container_current_workflow", "container_ps_order", "container_mt_order", "container_batch2", "container_preprocess", "container_fine_tuning", "container_about", "container_performance", "container_help"];
         containers.forEach(function(id) { if (ui[id]) { ui[id].setBackgroundColor(colors.parseColor(colorWhite)); } });
         ui.status_text.setBackgroundColor(colors.parseColor(colorBgGrey)); ui.status_text.setTextColor(colors.parseColor(colorTextHint));
         ui.btn_reverse.setTextColor(colors.parseColor(colorBlue)); ui.btn_forward.setTextColor(colors.parseColor(colorBlue));
@@ -979,6 +1007,11 @@ function switchActiveScheme(schemeIndex) {
 // --- 启动与事件绑定 ---
 applyColorStyles();
 switchTab(0);
+// [修改] 动态设置版本号
+ui.subtitle_text.setText("v" + scriptInfo.version + " (增强版)");
+ui.about_version_text.setText("版本：v" + scriptInfo.version + " (纠错与增强)");
+
+
 tabs.forEach(function(tab, index) { tab.on("click", function() { switchTab(index); }); });
 
 schemeButtons.forEach(function(button, index) {
@@ -1010,6 +1043,15 @@ ui.btn_toggle_fine_tuning.on("click", function() {
     panel.attr("visibility", isVisible ? "gone" : "visible");
     ui.btn_toggle_fine_tuning.setText(isVisible ? "展开系统设置" : "收起系统设置");
 });
+
+// [新增] 帮助与信息按钮的事件绑定
+ui.btn_show_manual.on('click', function() {
+    dialogs.alert("使用说明", scriptInfo.userManual);
+});
+ui.btn_show_changelog.on('click', function() {
+    dialogs.alert("更新日志 (v" + scriptInfo.version + ")", scriptInfo.changelog);
+});
+
 
 var lastClickTimeStart = 0; var lastClickTimePreprocess = 0; var doubleClickDelay = 500;
 ui.btn_start.on('click', function() {
